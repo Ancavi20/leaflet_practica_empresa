@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editar Ubicación</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        form {
+            max-width: 400px;
+            margin: auto;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+        }
+
+        input, button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        /* Estilo para mostrar errores en rojo */
+        .error-message {
+            color: red;
+        }
+    </style>
+</head>
+<body>
+    <h2>Editar Ubicación</h2>
+    <form method="post" action="{% url 'map:edit_location' location_id=location.id %}">
+        {% csrf_token %}
+        <label for="name">Nombre:</label>
+        <input type="text" id="name" name="name" value="{{ location.name }}" required>
+        <div class="error-message">{{ form.name.errors }}</div>
+
+        <label for="latitude">Latitud:</label>
+        <div class="error-message">{{ form.latitude.errors }}</div>
+        <input type="text" id="latitude" name="latitude" value="{{ location.latitude }}" required>
+
+        <label for="longitude">Longitud:</label>
+        <div class="error-message">{{ form.longitude.errors }}</div>
+        <input type="text" id="longitude" name="longitude" value="{{ location.longitude }}" required>
+
+        <button type="submit">Guardar Cambios</button>
+
+    </form>
+</body>
+</html>
+
+
+
+
+

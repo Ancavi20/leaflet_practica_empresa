@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa interactivo</title>
+    <!-- Incluir la librería de Leaflet y Jquery para peticiones ajax-->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+    <!--GEOTIFF Leaflet-->
+    <script src="https://stuartmatthews.github.io/leaflet-geotiff/vendor/geotiff.js"></script>
+    <script src="https://stuartmatthews.github.io/leaflet-geotiff/vendor/plotty.js"></script>
+    <script src="leaflet-geotiff.js"></script>
+    <script src="leaflet-geotiff-plotty.js"></script>
+    <script src="leaflet-geotiff-vector-arrows.js"></script>
+    <style>
+        #container {
+            display: grid;
+            grid-template-columns: 80% 20%;
+            grid-template-rows: 81% 19%;
+            gap: 0px;
+            height: 95vh;
+        }
+
+        #map {
+            grid-column: 1;
+            grid-row: 1 / span 2;
+        }
+
+        #markerList {
+            padding: 1%;
+            overflow-y: scroll; /* Para agregar desplazamiento vertical si es necesario */
+            grid-column: 2;
+            grid-row: 1;
+            margin-top: 0px;
+        }
+
+        #markersUl {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        #markersUl li {
+            margin-bottom: 10px;
+        }
+
+        #markersUl li a {
+            text-decoration: none;
+            color: #19CF00;
+        }
+
+        .btn-delete {
+            margin-left: 10px;
+            background-color: red;
+            font-weight: bold;
+        }
+
+        .form-group{
+            display: block;
+            grid-column: 2;
+            grid-row: 2;
+        }
+
+        .nav-bar{
+            text-align: end;
+        }
+
+        .nav-bar a {
+            margin: 0px 30px 0px 10px;
+            text-decoration: none;
+            color: black;
+            border: 1px solid black;
+            padding: 5px;
+            background-color: lightgrey;
+        }
+
+        #fileUploadForm button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            padding: 10px;
+        }
+
+        #fileUploadForm button:hover {
+            background-color: #45a049;
+        }
+        #image_file{
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <nav class="nav-bar">
+        {% if user.is_authenticated %}
+        <span>{{ user.username }}</span>
+        <a href="/logout">Cerrar Sesión</a>
+    {% else %}
+        <a href="/register">Registrarse</a>
+        <a href="/login">Iniciar sesión</a>
+    {% endif %}
+    </nav>
+    <form method="post" id="tuFormulario">
+        {% csrf_token %}
+        <!--Contenedor con los elementos principales de la página-->
+        <div id="container">
+            <!-- MAPA TEAFLET-->
+            <div id="map"></div>
+            <!--Lista de marcadores añadidos al mapa-->
+            <div id="markerList">
+                <h2>Marcadores</h2>
+                <ul id="markersUl">
+                    <!--Para cada ubicación se crea un enlace y un botón de borrar-->
+                    {% for location in locations %}
+                        <li>
+                            <a href="{% url 'map:edit_location' location_id=location.id %}">{{ location.name }}</a>
+                            <button class="btn-delete" type="button" onclick="borrarUbicacion('{{ location.id }}')">Borrar</button>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <!-- Formulario de carga de archivos -->
+            {% if user.is_authenticated %}
+            <div id="fileUploadForm">
+                <h2>Subir Archivos</h2>
+                <form method="post" action="#" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <!-- Campo de entrada para archivos termal -->
+                    <div class="form-group">
+                    <label for="tiff_file">Subir Archivo TIFF:</label>
+                    <input type="file" id="tiff_file" name="tiff_file" accept=".tif">
+                    </div>
+                    <!-- Campo de entrada para archivos RGB -->
+                    <div class="form-group">
+                    <label for="tiff_file_rgb">Subir Archivo TIFF RGB:</label>
+                    <input type="file" id="tiff_file_rgb" name="tiff_file_rgb" accept=".tif">
+                    </div>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+    </form>
+
+    <script>
+        var map = L.map('map').setView([40.4165, -3.70256], 7);
+        var markersLayer = L.layerGroup().addTo(map);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        // Añadir menú contextual al mapa
+        var contextMenu = L.popup();
+
+        //Función que al hacer click derecho en el mapa te crea un nuevo marker
+        function onMapRightClick(e) {
+            contextMenu
+                .setLatLng(e.latlng)
+                .setContent('<a href="#" onclick="createNewPoint()">Crear nuevo punto</a>')
+                .openOn(map);
+        }
+
+        map.on('contextmenu', onMapRightClick);
+
+        // Función para crear un nuevo punto
+        function createNewPoint() {
+            var name = prompt("Ingrese el nombre del nuevo punto:");
+
+            if (isNameAlreadyUsed(name)) {
+                alert("Ya existe un marcador con ese nombre. Por favor, elija otro nombre.");
+                return;
+            }
+
+            if (name) {
+                // Crear un nuevo marcador en la posición del clic derecho
+                var newMarker = L.marker(contextMenu._latlng)
+                    .bindPopup('<b>' + name + '</b>')
+                    .addTo(markersLayer);
+
+                // Obtener el token CSRF
+                var csrfToken = document.getElementsByName('csrfmiddlewaretoken')[0].value;
+
+                // Enviar información al servidor para guardar en la base de datos
+                $.ajax({
+                    type: 'POST',
+                    url: '/create_location/',
+                    data: {
+                        'name': name,
+                        'latitude': contextMenu._latlng.lat,
+                        'longitude': contextMenu._latlng.lng,
+                        'csrfmiddlewaretoken': csrfToken,
+                    },
+                    success: function(data) {
+                        console.log('Ubicación guardada con éxito:', data);
+                    },
+                    error: function(error) {
+                        console.error('Error al guardar la ubicación:', error);
+                    }
+                });
+            }
+            map.closePopup(contextMenu);
+        }
+
+        //Comprueba que el nombre de la ubicación no este en uso ya.
+        function isNameAlreadyUsed(name) {
+            var existingMarkers = markersLayer.getLayers();
+
+            for (var i = 0; i < existingMarkers.length; i++) {
+                if (existingMarkers[i].getPopup().getContent() === '<b>' + name + '</b>') {return true;}  // Ya existe un marcador con el mismo nombre
+            }
+    return false;  // No hay un marcador con el mismo nombre
+}
+
+        //Función que elimina un marcador del mapa
+        function borrarUbicacion(name) {
+        var confirmacion = confirm('¿Seguro que deseas borrar la ubicación ' + name + '?');
+
+        if (confirmacion) {
+            window.location.href = '/delete_location/' + name + '/';
+        }
+    }
+        // Cargar puntos existentes al cargar la página
+        $(document).ready(function() {
+            $.ajax({
+                type: 'GET',
+                url: '/get_locations/',
+                success: function(locations) {
+                    locations.forEach(function(location) {
+                        var marker = L.marker([location.latitude, location.longitude])
+                            .bindPopup('<b>' + location.name + '</b>')
+                            .addTo(markersLayer);
+                    });
+                },
+                error: function(error) {
+                    console.error('Error al obtener ubicaciones existentes:', error);
+                }
+            });
+        });
+
+
+        //IMPORTANTE: ESTE FRAGMENTO NO FUNCIONA YA QUE HABRÍA QUE INSTALAR ALGUNAS DEPENDENCIAS
+        //import "leaflet-geotiff-2";
+        // optional renderers
+        //import "leaflet-geotiff-2/dist/leaflet-geotiff-rgb";
+        //import "leaflet-geotiff-2/dist/leaflet-geotiff-vector-arrows";
+        //import "leaflet-geotiff-2/dist/leaflet-geotiff-plotty";
+    $("#tiff_file").change(function () {
+        const file = this.files[0];
+        console.log('hola mundo')
+        var img = L.leafletGeotiff(
+            file,
+            {
+                renderer: L.LeafletGeotiff.plotty({
+					displayMin: 0,
+					displayMax: 30,
+					colorScale: 'rainbow',
+					clampLow: false,
+					clampHigh: true,
+				})
+            }
+        ).addTo(mymap);
+    });
+
+    $("#tiff_file_rgb").change(function () {
+        const file = this.files[0];
+        console.log('hola mundo')
+        var img = L.leafletGeotiff(
+            file,
+            {
+                renderer: L.LeafletGeotiff.rgb({
+					rBand: 0,
+					gBand: 1,
+                    bBand: 2,
+                    alphaBand: 0,
+                    transpValue: 0,
+                    renderer: renderer,
+				})
+            }
+        ).addTo(mymap);
+    });
+    </script>
+</body>
+</html>
